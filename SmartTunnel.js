@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SmartTunnel
 // @namespace    http://tampermonkey.net/
-// @version      0.4.2
+// @version      0.4.4
 // @description  根据网络环境自动选择访问站点（IPv6->A站点，内网->B站点）
 // @author       You
 // @match        *://*/*
@@ -24,6 +24,7 @@
     let intranetTestUrl = GM_getValue('smarttunnel_intranetTestUrl', 'http://intranet-test-resource/');
     let lastUpdateCheck = GM_getValue('smarttunnel_lastUpdateCheck', 0);
     let updateCheckInterval = GM_getValue('smarttunnel_updateCheckInterval', 86400000); // 默认24小时
+    let autoUpdateEnabled = GM_getValue('smarttunnel_autoUpdateEnabled', false);
     
     // 检查当前网站是否在白名单中
     function checkWhitelist() {
@@ -222,10 +223,12 @@
         // 获取当前版本
         const currentVersion = GM_info.script.version;
         
-        // 发起请求获取最新版本
+        // 使用 @updateURL 中定义的地址检查更新
+        const updateUrl = GM_info.script.updateURL || "https://raw.githubusercontent.com/xzy-nine/SmartTunnel/main/SmartTunnel.js";
+        
         GM_xmlhttpRequest({
             method: "GET",
-            url: "https://raw.githubusercontent.com/xzy-nine/SmartTunnel/main/SmartTunnel.js",
+            url: updateUrl,
             onload: function(response) {
                 if (response.status === 200) {
                     // 提取最新脚本中的版本号
@@ -234,17 +237,33 @@
                         const latestVersion = versionMatch[1];
                         
                         // 比较版本号
-                        const isNewer = compareVersions(latestVersion, currentVersion);
-                        
-                        if (isNewer) {
+                        if (isNewerVersion(latestVersion, currentVersion)) {
                             // 显示更新提示
-                            GM_notification({
-                                title: 'SmartTunnel 更新可用',
-                                text: `有新版本 ${latestVersion} 可用 (当前版本: ${currentVersion})`,
-                                onclick: function() {
-                                    window.open('https://github.com/xzy-nine/SmartTunnel/raw/main/SmartTunnel.js', '_blank');
-                                }
-                            });
+                            const updateMessage = `有新版本 ${latestVersion} 可用 (当前版本: ${currentVersion})`;
+                            
+                            // 下载链接
+                            const downloadUrl = GM_info.script.downloadURL || 
+                                "https://github.com/xzy-nine/SmartTunnel/raw/main/SmartTunnel.js";
+                                
+                            if (autoUpdateEnabled) {
+                                // 如果启用了自动更新，提示用户并提供直接链接
+                                GM_notification({
+                                    title: 'SmartTunnel 更新可用',
+                                    text: `${updateMessage}，点击此处安装更新`,
+                                    onclick: function() {
+                                        window.open(downloadUrl, '_blank');
+                                    }
+                                });
+                            } else {
+                                // 如果没有启用自动更新，只提示有更新可用
+                                GM_notification({
+                                    title: 'SmartTunnel 更新可用',
+                                    text: `${updateMessage}，点击此处查看更新`,
+                                    onclick: function() {
+                                        window.open(downloadUrl, '_blank');
+                                    }
+                                });
+                            }
                         } else if (showNoUpdateMsg) {
                             // 仅在手动检查时显示"已是最新"提示
                             GM_notification({
@@ -270,8 +289,49 @@
         });
     }
     
+    // 添加在检查更新函数后面
+
+    // 自动更新脚本
+    function autoUpdate() {
+        const currentVersion = GM_info.script.version;
+        const updateUrl = GM_info.script.updateURL || "https://raw.githubusercontent.com/xzy-nine/SmartTunnel/main/SmartTunnel.js";
+        
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: updateUrl,
+            onload: function(response) {
+                if (response.status === 200) {
+                    try {
+                        // 提取最新脚本中的版本号
+                        const versionMatch = response.responseText.match(/@version\s+([0-9.]+)/);
+                        if (versionMatch && versionMatch[1]) {
+                            const latestVersion = versionMatch[1];
+                            
+                            // 比较版本号
+                            if (isNewerVersion(latestVersion, currentVersion)) {
+                                // 创建一个临时脚本元素来安装更新
+                                const script = document.createElement('script');
+                                script.textContent = response.responseText;
+                                script.setAttribute('data-autoinstall', true);
+                                document.body.appendChild(script);
+                                
+                                GM_notification({
+                                    title: 'SmartTunnel 自动更新',
+                                    text: `正在从版本 ${currentVersion} 更新到 ${latestVersion}`,
+                                    timeout: 3000
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.error('SmartTunnel 自动更新出错:', e);
+                    }
+                }
+            }
+        });
+    }
+    
     // 比较版本号，如果v2比v1新则返回true
-    function compareVersions(v1, v2) {
+    function isNewerVersion(v2, v1) {
         const v1parts = v1.split('.').map(Number);
         const v2parts = v2.split('.').map(Number);
         
@@ -279,10 +339,10 @@
             const part1 = i < v1parts.length ? v1parts[i] : 0;
             const part2 = i < v2parts.length ? v2parts[i] : 0;
             
-            if (part1 > part2) {
-                return true;  // v1 更新
-            } else if (part1 < part2) {
-                return false; // v2 更新
+            if (part1 < part2) {
+                return true;  // v2 更新
+            } else if (part1 > part2) {
+                return false; // v1 更新
             }
         }
         
@@ -307,12 +367,26 @@
         alert(`更新检查间隔已设置为 ${days} 天`);
     }
     
-    // 主函数
+    // 切换自动更新功能
+    function toggleAutoUpdate() {
+        autoUpdateEnabled = !autoUpdateEnabled;
+        GM_setValue('smarttunnel_autoUpdateEnabled', autoUpdateEnabled);
+        alert(`自动更新功能已${autoUpdateEnabled ? '启用' : '禁用'}`);
+        alert(autoUpdateEnabled ? '启用后，将在检测到新版本时提示您安装更新' : '禁用后，您需要手动检查和安装更新');
+    }
+    
+    // 修改main函数
+
     function main() {
         const whitelistSite = checkWhitelist();
         
         // 检查更新
         checkUpdate();
+        
+        // 如果启用了自动更新，尝试自动更新
+        if (autoUpdateEnabled) {
+            autoUpdate();
+        }
         
         if (whitelistSite) {
             // 如果当前网站在白名单中，检查网络环境
@@ -346,6 +420,7 @@
     GM_registerMenuCommand("🛠️ 修复白名单URL格式", fixWhitelistURLs);
     GM_registerMenuCommand("🔄 检查更新", function() { checkUpdate(true); });
     GM_registerMenuCommand("⏱️ 设置更新检查间隔", setUpdateInterval);
+    GM_registerMenuCommand(`${autoUpdateEnabled ? '✅' : '❌'} ${autoUpdateEnabled ? '启用' : '禁用'}自动更新`, toggleAutoUpdate);
     
     // 脚本启动
     main();
