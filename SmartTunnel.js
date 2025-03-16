@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SmartTunnel
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1
+// @version      0.4.2
 // @description  根据网络环境自动选择访问站点（IPv6->A站点，内网->B站点）
 // @author       You
 // @match        *://*/*
@@ -244,17 +244,18 @@
                                 onclick: function() {
                                     window.open('https://github.com/xzy-nine/SmartTunnel/raw/main/SmartTunnel.js', '_blank');
                                 }
-                            } else if (showNoUpdateMsg) {
-                                // 仅在手动检查时显示"已是最新"提示
-                                GM_notification({
-                                    title: 'SmartTunnel 更新检查',
-                                    text: `当前版本 (${currentVersion}) 已是最新版本`,
-                                    timeout: 3000,
-                                    onclick: function() {
-                                        window.open('https://github.com/xzy-nine/SmartTunnel', '_blank');
-                                    }
-                                });
-                            }
+                            });
+                        } else if (showNoUpdateMsg) {
+                            // 仅在手动检查时显示"已是最新"提示
+                            GM_notification({
+                                title: 'SmartTunnel 更新检查',
+                                text: `当前版本 (${currentVersion}) 已是最新版本`,
+                                timeout: 3000,
+                                onclick: function() {
+                                    window.open('https://github.com/xzy-nine/SmartTunnel', '_blank');
+                                }
+                            });
+                        }
                     }
                 }
             },
